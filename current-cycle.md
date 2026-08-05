@@ -380,3 +380,230 @@ Layer 5 instruments rather than the reverse. Every interesting number in
 `bench_lab.py` needed a task metric, an interval, and a named set -- which is
 the map's "evaluation before everything" ordering, confirmed from the far end of
 the stack.
+
+2026-08-05 -- Seven micro modules on a sixth fixture, `modules/ops-lab/`,
+filling Layer 9 (production AI and LLMOps), which had no module against any of
+its seven rows: `reproducible-builds.md`, `config-and-secrets.md`,
+`structured-logging-tracing.md`, `model-prompt-registry.md`,
+`metrics-and-cost-monitoring.md`, `drift-and-degradation.md`,
+`failure-queues-and-replay.md`. **Cycle status unchanged** -- the three primary
+sources are still unread, the 50 records still unlabelled, the holdout still
+does not exist.
+
+The fixture is built around one event: on day 45 of a sixty-day timeline the
+provider changes what the `mid-1` alias resolves to, with no deploy, no config
+diff and no field to record it in. Four of the seven modules turned out to be
+about some instrument's inability to see it, which was not the plan.
+
+Four findings that change this cycle or the project:
+
+- **No gold-free signal saw a 12-point collapse in record accuracy.** Schema
+  validity, retry rate, field-fill rate, output length and mean confidence were
+  all flat across the reskill; the best available proxy -- agreement with the
+  regex-and-rules date extractor -- moved 1.8 points overall and 4.2 points on
+  the subset where the rule can discriminate at all, against a true -0.123.
+  Mean confidence moved 0.002, because confidence is a token the model emits
+  rather than a measurement it takes. Consequence for the project: the
+  production quality panel cannot be gold-free, and the labelled set is not a
+  nice-to-have for the eval gate -- it is the only instrument that sees
+  semantic degradation. The rules baseline from step 5 doubles as a monitor,
+  which is the one piece of free leverage, and it must be computed per slice:
+  on regulation documents the event date *is* the fetch date, so the rule and
+  the failure mode agree and the monitor is blind.
+- **Determinism in the eval harness is worth more than any detector.** A frozen
+  set with frozen seeds against a temperature-0 model has a day-to-day noise
+  floor of exactly 0.0000, so a difference is a difference and the harness can
+  name *which* records changed. Resampling "today's 50 records" instead costs a
+  0.036 standard deviation, 17 threshold alarms in 45 quiet days, and the
+  ability to diff anything. Consequence for steps 4 and 8: freeze the seeds and
+  the request order alongside the holdout, and have the eval harness retry
+  transient provider errors rather than score them. The counterweight is in the
+  same table -- a frozen set caught the model change exactly and missed a
+  traffic-mix change entirely, so the number to watch is the *gap* between the
+  frozen gate and a periodic resample of live traffic, and a widening gap
+  invalidates every decision the gate made while it widened.
+- **The behavioural-hash finding has now appeared three times and should be
+  treated as a rule.** Stamping every record with model name, prompt name,
+  prompt sha, params sha, code, schema and index version attributed only 63.3%
+  of sixty days of records uniquely; the residual was exactly the release that
+  was live on both sides of day 45. A 24-item probe set hashed through the
+  configuration caught all five changes including the provider-side one, and
+  also caught the in-place prompt edit that a *name* misses. Consequence for
+  the ADR and for Sinoscope's schema: store a config_id foreign key (8 bytes
+  against 149 inline, four configurations in sixty days) whose row includes a
+  behavioural fingerprint refreshed per deploy and per day. Same shape as
+  `eval-set-versioning.md`'s behavioural policy hash and
+  `reproducible-builds.md`'s byte-identical artifact.
+- **The alarm belongs on the ratio, and the denominator is where the incident
+  hides.** A 35% regression in cost per record landed in the same week as a 28%
+  volume drop and total spend moved +4.3% -- under every threshold, with an
+  EWMA detector that never fired. The same four detectors on cost *per record*
+  caught it the day it landed with zero false alarms, while the day-over-day
+  detector on total spend fired 12 times in 90 quiet days, all on Mondays, and
+  its apparent 1-day "detection" was also a Monday. Consequence for the ADR's
+  reporting section: report totals, alert on rates and ratios, and publish a
+  detector's false-alarm count on quiet history next to its detection delay, or
+  the delay means nothing. Separately, aggregate unit cost moved +54.7% with no
+  slice moving at all when the traffic mix shifted -- so any cost or quality
+  aggregate needs volume-by-slice on the same dashboard.
+
+One more that is small and unusually cheap to act on: replaying a failed
+extraction by document id reproduced the original failure 2% of the time,
+against 100% when the input snapshot and the *draw* were stored, for a few
+hundred bytes per dead-letter item. And a replay run before the fix is deployed
+is a pure duplication event -- 117 of 205 queued items were successes whose
+acknowledgement was lost.
+
+2026-08-05 -- Eight micro modules on a seventh fixture, `modules/service-lab/`,
+filling Layer 1b (backend systems), which had no module against any of its eight
+rows: `http-semantics-streaming.md`, `authn-and-authz.md`,
+`idempotency-keys.md`, `backoff-circuit-breaking.md`,
+`background-jobs-queues.md`, `transactions-and-consistency.md`, `caching.md`,
+`object-storage-and-files.md`. Every row of the map now has at least one module
+against it. **Cycle status unchanged** -- the three primary sources are still
+unread, the 50 records still unlabelled, the holdout still does not exist.
+
+This is the second fixture whose subject is not simulated, and it is the widest:
+a real TCP listener, real HTTP framing, real kernel socket buffers, a real
+accept queue that really overflowed, real SQLite locks, real thread
+interleaving and a real filesystem with its own opinions about filenames. Its
+numbers move between runs, which is stated at the top of its README. Three
+things that were written into the labs as demonstrations turned out to be wrong
+and are recorded in `failure-log.md`.
+
+Four findings that change this cycle or the project:
+
+- **The Layer 5 "cost per successful task" row has an exact twin in caching,
+  and the obvious fix for it is worse than doing nothing.** A cache reports a
+  hit rate and you pay for what it did not answer: at every capacity from 4 to
+  32 the hit rate exceeded the fraction of cost saved, by 20 to 33 points
+  (59.2% hit rate, 28.5% cost saved at capacity 8). The arm built to fix that
+  -- evicting the cheapest-to-recompute entry rather than the least recent --
+  lost **both**, 4.6 points of cost saved and 12.0 of hit rate, because value
+  is (frequency x cost) and dropping the frequency term keeps items asked for
+  three times over items asked for fifty. Consequence for the ADR in step 8:
+  when a ratio is the decision metric, the actionable rule is the product, and
+  a one-factor proxy for a two-factor quantity needs measuring rather than
+  assuming. This is the second time in this repository that a one-factor rule
+  has replaced a two-factor one and lost.
+- **The write path is the authorization leak that outlives the fix, and the
+  test suite that covers every endpoint catches none of them.** With a valid
+  token for one tenant, five of six endpoints returned another tenant's data;
+  a happy-path suite exercising all six endpoints passed 6/6 and detected 0 of
+  the 5. The expensive one is `POST /extractions {doc_id}`: it does not read
+  the other tenant's document, it *extracts* from it and stores the result
+  stamped with the caller's tenant, indistinguishable from their own data
+  afterwards. Consequence for the project transfer: the tenant predicate goes
+  in the query rather than in the handler (post-filtering still leaked the
+  count, the page length and a 403/404 existence oracle), and the eval work's
+  own habit applies here -- the test grid is (endpoint x principal x object
+  owner), because that grid already has a row for the endpoint added next
+  month.
+- **A transaction that spans the provider call halves throughput and starts
+  failing, and this is exactly the shape of Sinoscope's extraction path.** The
+  same work with a 30 ms provider call inside the transaction ran at 26 docs/s
+  with 7 lock timeouts, against 69 docs/s and 0 with the call moved before
+  `BEGIN`. A real provider call is 900 ms, not 30. Separately and more
+  quietly, the naive read-modify-write lost 150 of 200 increments while
+  reporting 4 errors -- 146 losses in total silence -- which is the same
+  detection problem as `drift-and-degradation.md`: the failure that reports
+  nothing needs an instrument, not a log line. Consequence: do the extraction
+  first, open the transaction only around the writes, and accept that the call
+  can then succeed unrecorded -- which is why it must be replayable rather than
+  assumed exactly-once.
+- **The natural key this cycle already relies on answers a different question
+  than the one it was adopted for.** `UNIQUE(doc_id, content_sha)` was treated
+  as a free backstop against duplicate extractions. On 24 requests covering 8
+  documents it left **8 rows**, not 24: it suppressed the 8 retries and also
+  collapsed the 16 distinct requests that produced the same answer. The
+  idempotency key asks "is this the same request", the natural key asks "is
+  this the same observation", and only the first has access to intent.
+  Consequence for the project schema before step 8: decide whether re-extracting
+  a document is supposed to produce a second row -- append-only event log says
+  yes, current-view says no -- because the constraint and an UPSERT implement
+  opposite answers and the choice is invisible in the DDL.
+
+One further result that is small and directly usable: the deliberate
+amplification chain. Three layers each retrying a modest 3x sent 270 upstream
+requests for 10 user actions, measured on real servers, and a synchronised
+backoff without jitter lost 23 of 60 connections to accept-queue overflow --
+at a layer with no application logging, surfacing at the client as a transient
+error that every retry policy retries. Any retry or backoff recommendation in
+the ADR has to name the single layer it lives at, and any burst measurement has
+to count what never arrived.
+
+2026-08-05 -- Six micro modules on an eighth fixture, `modules/stats-lab/`,
+filling Layer 2 (mathematical and ML literacy), the last layer without a batch
+of its own: `calibration-and-thresholds.md`, `classical-baselines.md`,
+`leakage-and-shift.md`, `dimensionality-reduction.md`, `matmul-and-shapes.md`,
+`entropy-and-perplexity.md`. **Cycle status unchanged** -- the three primary
+sources are still unread, the 50 records still unlabelled, the holdout still
+does not exist.
+
+The map says Layer 2 rows are learned inside the module that uses them and
+should never be an active cycle on their own, so every lab scores an artifact
+from another fixture: three run on `zh-retrieval-lab/`'s Chinese documents and
+metrics, three on 600 generated extraction records shaped like
+`extraction-eval-sets/`. Four Layer 2 rows were deliberately left alone -- two
+already have modules, one is covered by `sampling-and-decoding.md`, and
+gradients/backprop has no project pull, which by the map's own rule disqualifies
+it. Two things written into the labs as demonstrations turned out to be wrong
+and are in `failure-log.md`; one of them is a fixture that scored 0.9965 and
+meant nothing.
+
+Four findings that change this cycle:
+
+- **Open question 1 now has a number and the answer is: bulk yes, holdout never.**
+  Labelling by correcting extractor output, with a labeller who notices 75% of
+  errors and 45% of the plausible ones, agreed with blind truth on 94% of
+  records -- and moved the *measured gap between two systems by 8.7 points*,
+  raising the extractor 6.0 and lowering its competitor 2.7. The inflation is
+  largest exactly where the extractor is worst: the rarest class read 0.7500
+  against a true 0.4773. The errors a reviewer fails to notice and the errors a
+  model makes confidently are the same errors, so a corrected set is least
+  trustworthy about the class it most needs to be trustworthy about.
+  Consequence for steps 3 and 4: correct the bulk, label the holdout blind, and
+  never pool them.
+- **The decomposition that protects a metric from a mix change invents a
+  regression at this sample size.** The fixture's per-class accuracy is
+  stationary by construction and only the mix moves; aggregate accuracy still
+  fell 0.0959, and the standard mix/quality decomposition attributed **-0.0812
+  of it to "quality"** -- a number with no referent. Over 40 populations the
+  aggregate fell in 37 while per-class change averaged +0.0016 with sd 0.0824.
+  Consequence for step 8 and for any Sinoscope quality panel: the slice-level
+  noise does not cancel in the reweighting, it lands in the residual, so the
+  quality term needs an interval before anyone acts on it. This is
+  `metrics-and-cost-monitoring.md`'s aggregate-with-no-moving-slice finding
+  with the remedy included, and the remedy is underpowered.
+- **The auto-accept threshold is arithmetic, and sweeping for it loses.** With
+  review at 1 and a wrong shipped record at 8, the analytic threshold
+  `p > 1 - 1/8` on calibrated probabilities cost 0.7700 per record against
+  0.7767 and 0.7867 for thresholds swept on a fit split -- and the swept value
+  had a 10th-90th range of 0.77-0.96 even at n=300. The same analytic rule on
+  the *raw* confidence cost 0.8400, so calibration bought 8% of the budget
+  without changing the model at all. Consequence for the ADR: state the cost
+  ratio, derive the threshold, and recalibrate first -- and note that
+  recalibration cannot help a decision made on a rank, because temperature
+  scaling left AUC unchanged to the last decimal (0.736042 both sides), which
+  is a theorem rather than a result.
+- **Fifty labels buy an instrument, not a competitor, and the curve says so.**
+  A bag-of-words classifier trained on n story-grouped records reached 0.6414
+  accuracy at n=50 against the extractor's 0.8267, 0.7894 at n=200, and 0.8033
+  at n=300 -- steeply concave, with labels 10-50 worth 0.20 and labels 200-300
+  worth 0.014. More useful than the level: the classifier and the extractor
+  agreed on only 68.3% of records, and **routing the agreed set straight
+  through gives 0.9756 precision against the extractor's 0.8267 alone**. The
+  free baseline's value was never that it might replace the model; it is that
+  it disagrees in different places, which is a signal no model can produce
+  about itself. Consequence for the project transfer: the rules baseline from
+  step 5 is a router as well as a monitor.
+
+Two smaller results worth keeping. A single global recalibration made two
+already-calibrated classes materially *worse* (leadership_change ECE 0.0683 ->
+0.1294) while failing to fix the broken one -- so per-slice calibration or an
+explicit "this slice is uncalibrated" is the only honest pair of options. And
+on the dimensionality side, retrieval quality is not monotone in the number of
+components and variance explained does not predict it: at full rank, where the
+projection is a lossless rotation, recall was still 0.5833 against 0.6667,
+because the entire difference was the centring step that makes it PCA rather
+than an SVD.

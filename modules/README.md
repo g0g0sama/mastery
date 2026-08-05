@@ -133,7 +133,105 @@ refuses to queue.
 judgments and metrics from `zh-retrieval-lab/`, so the quality numbers in the
 Layer 8 modules are directly comparable with the Layer 6 ones.
 
+Seven run against `ops-lab/`, a sixth fixture that reuses `model-interface-lab`'s
+provider and extraction task. Layer 9, the layer that decides whether anything
+above it can be operated:
+
+| Module | Experiment | Capability (Layer 9) |
+|---|---|---|
+| `reproducible-builds.md` | `build_lab.py` | containerization and CI/CD |
+| `config-and-secrets.md` | `secrets_lab.py` | config and secret management |
+| `structured-logging-tracing.md` | `logging_lab.py` | structured logging and tracing |
+| `model-prompt-registry.md` | `registry_lab.py` | model and prompt registry |
+| `metrics-and-cost-monitoring.md` | `cost_lab.py` | metrics and cost monitoring |
+| `drift-and-degradation.md` | `drift_lab.py` | drift and quality degradation |
+| `failure-queues-and-replay.md` | `dlq_lab.py` | failure queues and replay |
+
+Read in that order: what you ship, what must not be inside it, what it emits
+while running, the identity stamp on every row it writes, the aggregation over
+those rows and the alarm on it, whether the quality is still there, and finally
+what to do with what failed. The middle of that chain is the part usually built
+last and needed first -- an aggregate you cannot attribute to a configuration is
+not evidence about the configuration.
+
+The fixture's sixty-day timeline contains one event with no deploy: on day 45
+the provider changes what the `mid-1` alias resolves to. Four of the seven
+modules are about some instrument's inability to see it, and one is about the
+instrument that can.
+
+Eight run against `service-lab/`, a seventh fixture that reuses
+`model-interface-lab`'s provider and extraction task. Layer 1b, the layer
+between the wire and the store, and the last layer of the map to have a module
+against every one of its rows:
+
+| Module | Experiment | Capability (Layer 1b) |
+|---|---|---|
+| `http-semantics-streaming.md` | `http_lab.py` | HTTP semantics and streaming responses |
+| `authn-and-authz.md` | `auth_lab.py` | AuthN / AuthZ (+ authz outside the model, L10) |
+| `idempotency-keys.md` | `idempotency_lab.py` | idempotency and retry policy |
+| `backoff-circuit-breaking.md` | `resilience_lab.py` | backoff, circuit breaking, rate limits |
+| `background-jobs-queues.md` | `jobs_lab.py` | background jobs and queues |
+| `transactions-and-consistency.md` | `tx_lab.py` | transactions and consistency |
+| `caching.md` | `cache_lab.py` | caching |
+| `object-storage-and-files.md` | `storage_lab.py` | object storage and file handling |
+
+Read in that order: the wire, then who is asking, then the same request twice,
+then the same request many times on purpose, then the request that outlives its
+connection, then what the writes underneath all of it guarantee, then the
+answer you did not compute, and finally the bytes and why their name is a hash.
+The chain is a dependency: idempotency before retry policy because a retry
+policy without a key is a duplicate generator, and queues after both because a
+queue is at-least-once by construction.
+
+The fixture's centre of gravity is one event and it is not a failure -- a
+client whose request timed out and therefore sent it again. Six of the eight
+modules are about what some layer does with that second delivery; two are about
+the layer that cannot see it happened.
+
+Six run against `stats-lab/`, an eighth fixture and the last one built. Layer
+2, the mathematical and ML literacy layer, and the only layer that had never
+had a batch of its own:
+
+| Module | Experiment | Capability (Layer 2) |
+|---|---|---|
+| `calibration-and-thresholds.md` | `calibration_lab.py` | calibration and thresholds |
+| `classical-baselines.md` | `classical_lab.py` | classical ML baselines |
+| `leakage-and-shift.md` | `leakage_lab.py` | leakage, distribution shift, imbalance |
+| `dimensionality-reduction.md` | `pca_lab.py` | dimensionality reduction, PCA/SVD |
+| `matmul-and-shapes.md` | `shapes_lab.py` | matrix multiplication and shapes |
+| `entropy-and-perplexity.md` | `entropy_lab.py` | entropy, cross-entropy, KL, perplexity |
+
+The map is explicit that Layer 2 rows are learned **inside** the module that
+uses them and should never be an active cycle on their own, so every lab here
+scores an artifact from another fixture: `pca_lab.py`, `shapes_lab.py` and
+section 1 of `entropy_lab.py` run on `zh-retrieval-lab/`'s Chinese documents,
+queries, analyzers and metrics; the other three run on 600 generated extraction
+records with the field names and event vocabulary of `extraction-eval-sets/`.
+The directory exists only because three of the six rows need more records than
+any existing fixture has -- twelve gold records cannot carry a learning curve,
+a calibration curve, or a group-split comparison.
+
+Four Layer 2 rows deliberately have no module. Vector geometry and confidence
+intervals already have one (`vector-similarity.md`, `eval-set-sample-size.md`);
+probability and sampling is covered by `sampling-and-decoding.md`; and
+gradients, loss and backprop has no project pull, which by the map's own rule
+makes it a row that should not be next.
+
 ## A note on the fixtures
+
+`service-lab/` and `store-lab/` are the two whose subject is not simulated.
+Here it is the network stack, SQLite's locks, the OS scheduler and the
+filesystem: real sockets and chunked framing, a real accept queue that really
+overflowed, real lock contention, real thread interleaving, and a filesystem
+with its own opinions about what two filenames mean. Its numbers move between
+runs, which is stated at the top of its README -- the orderings are stable and
+the values are one machine on one run.
+
+`ops-lab/` is the widest mixture of kinds and says so per section: real
+filesystem, zip, hashing, subprocess and serialization measurements; records
+whose outcomes come from the fake provider's declared failure distribution; and
+declared volumes, prices, seasonality and the release timeline. Its README
+labels each one.
 
 `zh-retrieval-lab/`, `model-interface-lab/` and `agent-workflow-lab/` all run on
 invented data, and the last two run against a provider whose failure
@@ -149,9 +247,19 @@ involved in producing this repository. Each lab prints which kind of number it
 is reporting, because a derived decode ceiling read as a measurement is the
 easiest mistake in the fixture.
 
-`store-lab/` is the exception and is labelled as such: the engine is real, the
-data is not. Every plan string, timing and recall number in those seven modules
-came out of a database, and two of the six predictions written into
+`stats-lab/` is the mixture that is easiest to over-read and its README labels
+each kind: the Chinese text, character counts, principal components and recall
+numbers are real arithmetic over the retrieval fixture's real strings; several
+results are theorems that would hold on any data and are marked where they
+appear; and every one of its 600 extraction records is **generated from
+parameters written at the top of `population.py`**. Two of those parameters
+decide everything, which the README says out loud -- set `CONTAMINATION` to
+zero and every classifier in the fixture scores 0.99, which is a fact about the
+generator and nothing else. The first version of the fixture did exactly that.
+
+`store-lab/` is the other exception and is labelled as such: the engine is real,
+the data is not. Every plan string, timing and recall number in those seven
+modules came out of a database, and two of the six predictions written into
 `plan_lab.py` before it ran turned out to be wrong. What remains authored is the
 cardinality and value distribution of the rows -- which is precisely what a query
 planner keys on, so the direction of each result is evidence and the magnitude
@@ -166,8 +274,9 @@ the effect it demonstrates and the effect it cannot.
 
 A module here is evidence of exposure, not of level. Levels move in
 [../capability-map.md](../capability-map.md), and only on the five conditions in
-the cycle's evidence contract. Forty-one modules and five fixtures do not move
-a single row, which is the point of keeping the two files separate.
+the cycle's evidence contract. Seventy micro modules, one standard module and
+eight fixtures do not move a single row, which is the point of keeping the two
+files separate.
 
 The finished Python track lives separately in `../patterns/` -- ten standard
 modules, kept there because it is a complete curriculum in its own right rather
